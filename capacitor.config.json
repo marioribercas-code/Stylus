@@ -1,0 +1,15 @@
+{
+  "appId": "com.stylus.fashion",
+  "appName": "STYLUS",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "backgroundColor": "#0A0A0C",
+      "showSpinner": false
+    }
+  }
+}
