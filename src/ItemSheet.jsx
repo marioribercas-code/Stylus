@@ -4,7 +4,7 @@ import { Trash2, Archive, Droplets, Sparkles, Heart } from 'lucide-react';
 import { db } from './lib/db';
 import { SUBTYPES, CATEGORIES, PATTERNS, MATERIALS, FITS, STYLES, deltaE, colorFamily, paletteFit, SEASONS } from './lib/fashion';
 import { catOf, hexOf, fRange } from './lib/engine';
-import { cleanPhoto } from './lib/ai';
+import { removeBackgroundLocal } from './lib/bgremove';
 import { useData, Btn, Swatch, Thumb, itemLabel } from './ui';
 
 export function ItemForm({ value, onChange }) {
@@ -65,6 +65,7 @@ export default function ItemSheet({ item, onClose }) {
   const [edit, setEdit] = useState(false);
   const [draft, setDraft] = useState(item);
   const [busy, setBusy] = useState(false);
+  const [prog, setProg] = useState(null);
   const [confirmDel, setConfirmDel] = useState(false);
   const it = items.find((x) => x.id === item.id) || item;
   const hex = hexOf(it);
@@ -114,14 +115,20 @@ export default function ItemSheet({ item, onClose }) {
         <Btn onClick={() => { setDraft(it); setEdit(true); }}>Editar</Btn>
         <Btn onClick={() => update({ favorite: !it.favorite })}><Heart size={16} fill={it.favorite ? 'currentColor' : 'none'} />{it.favorite ? 'Favorita' : 'Favorita'}</Btn>
         <Btn onClick={() => { update({ laundry: !it.laundry }); notify(it.laundry ? 'Disponible de nuevo' : 'Marcada como en lavar: no se usará en outfits'); }}><Droplets size={16} />{it.laundry ? 'Ya está limpia' : 'A lavar'}</Btn>
-        <Btn busy={busy} onClick={async () => {
+        <Btn busy={busy} disabled={!it.photo} onClick={async () => {
           setBusy(true);
-          try { const photo = await cleanPhoto(it.photo); await update({ photo, originalPhoto: it.originalPhoto || it.photo }); notify('Foto mejorada'); } catch (e) { notify(e.message, true); }
-          setBusy(false);
-        }}><Sparkles size={16} />Mejorar foto</Btn>
+          try {
+            const photo = await removeBackgroundLocal(it.originalPhoto || it.photo, (p) => setProg(p));
+            await update({ photo, originalPhoto: it.originalPhoto || it.photo });
+            notify('Fondo eliminado');
+          } catch (e) { notify(`No se pudo quitar el fondo: ${e.message}`, true); }
+          setBusy(false); setProg(null);
+        }}><Sparkles size={16} />Quitar fondo</Btn>
         <Btn onClick={() => { update({ archived: !it.archived }); notify(it.archived ? 'Recuperada' : 'Archivada'); onClose?.(); }}><Archive size={16} />{it.archived ? 'Recuperar' : 'Archivar'}</Btn>
       </div>
-      <p className="tiny">«Mejorar foto» usa el modelo de imagen de Gemini (normalmente requiere facturación).</p>
+      <p className="tiny">{busy
+        ? (prog != null && prog < 100 ? `Descargando el modelo (solo la primera vez): ${prog}%` : 'Quitando el fondo en el móvil…')
+        : '«Quitar fondo» funciona en el móvil, gratis y sin IA de Google. La primera vez descarga un modelo pequeño.'}</p>
       {it.originalPhoto &&<button className="tiny" onClick={() => update({ photo: it.originalPhoto, originalPhoto: null })}>Restaurar foto original</button>}
       {!!alts.length && (
         <>
