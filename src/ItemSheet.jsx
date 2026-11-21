@@ -4,7 +4,8 @@ import { Trash2, Archive, Droplets, Sparkles, Heart } from 'lucide-react';
 import { db } from './lib/db';
 import { SUBTYPES, CATEGORIES, PATTERNS, MATERIALS, FITS, STYLES, deltaE, colorFamily, paletteFit, SEASONS } from './lib/fashion';
 import { catOf, hexOf, fRange } from './lib/engine';
-import { removeBackgroundLocal } from './lib/bgremove';
+import { segmentGarment } from './lib/ai';
+import { applyMask } from './lib/image';
 import { useData, Btn, Swatch, Thumb, itemLabel } from './ui';
 
 export function ItemForm({ value, onChange }) {
@@ -65,7 +66,6 @@ export default function ItemSheet({ item, onClose }) {
   const [edit, setEdit] = useState(false);
   const [draft, setDraft] = useState(item);
   const [busy, setBusy] = useState(false);
-  const [prog, setProg] = useState(null);
   const [confirmDel, setConfirmDel] = useState(false);
   const it = items.find((x) => x.id === item.id) || item;
   const hex = hexOf(it);
@@ -118,17 +118,17 @@ export default function ItemSheet({ item, onClose }) {
         <Btn busy={busy} disabled={!it.photo} onClick={async () => {
           setBusy(true);
           try {
-            const photo = await removeBackgroundLocal(it.originalPhoto || it.photo, (p) => setProg(p));
+            const src = it.originalPhoto || it.photo;
+            const seg = await segmentGarment(src);
+            const photo = await applyMask(src, seg.box_2d, seg.mask);
             await update({ photo, originalPhoto: it.originalPhoto || it.photo });
             notify('Fondo eliminado');
           } catch (e) { notify(`No se pudo quitar el fondo: ${e.message}`, true); }
-          setBusy(false); setProg(null);
+          setBusy(false);
         }}><Sparkles size={16} />Quitar fondo</Btn>
         <Btn onClick={() => { update({ archived: !it.archived }); notify(it.archived ? 'Recuperada' : 'Archivada'); onClose?.(); }}><Archive size={16} />{it.archived ? 'Recuperar' : 'Archivar'}</Btn>
       </div>
-      <p className="tiny">{busy
-        ? (prog != null && prog < 100 ? `Descargando el modelo (solo la primera vez): ${prog}%` : 'Quitando el fondo en el móvil…')
-        : '«Quitar fondo» funciona en el móvil, gratis y sin IA de Google. La primera vez descarga un modelo pequeño.'}</p>
+      <p className="tiny">{busy ? 'Recortando la prenda…' : '«Quitar fondo» usa 1 consulta gratuita de Gemini. Si no te gusta, restaura la original.'}</p>
       {it.originalPhoto &&<button className="tiny" onClick={() => update({ photo: it.originalPhoto, originalPhoto: null })}>Restaurar foto original</button>}
       {!!alts.length && (
         <>

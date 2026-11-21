@@ -16,7 +16,7 @@ export async function recognizeGarments(photo) {
   const small = await compress(photo, 1024, 0.85);
   const r = await ask([
     small,
-    `Identifica TODAS las prendas o calzados de hombre visibles como artículos sueltos (si es una persona vestida, cada prenda por separado; ignora fondo). Para cada una devuelve box_2d [ymin,xmin,ymax,xmax] normalizado 0-1000 y los atributos. Colores: hex medido sobre el tejido real compensando la iluminación (no sombras ni reflejos), el principal primero. formality: 1 deporte,2 casual,3 smart casual,4 business,5 formal. warmth: abrigo que aporta 0-5. JSON: {"items":[{"box_2d":[..],...${ITEM_SCHEMA.slice(1)}]}`,
+    `Identifica TODAS las prendas o calzados de hombre visibles como artículos sueltos (si es una persona vestida, cada prenda por separado; ignora fondo). Para cada una devuelve box_2d [ymin,xmin,ymax,xmax] normalizado 0-1000, "mask" (máscara de segmentación como PNG data-URL del tamaño de la caja; prenda=255, fondo=0) y los atributos. Colores: hex medido sobre el tejido real compensando la iluminación (no sombras ni reflejos), el principal primero. formality: 1 deporte,2 casual,3 smart casual,4 business,5 formal. warmth: abrigo que aporta 0-5. JSON: {"items":[{"box_2d":[..],"mask":"data:image/png;base64,...",...${ITEM_SCHEMA.slice(1)}]}`,
   ], { json: true, temperature: 0.1 });
   return (r.items || []).filter((x) => SUBTYPES[x.sub]);
 }
@@ -80,6 +80,15 @@ export async function tryOn(bodyPhoto, outfit) {
   return generateImage(parts);
 }
 
-export async function cleanPhoto(photo) {
-  return generateImage([await compress(photo, 900), 'Recorta esta prenda y preséntala como foto de producto de e-commerce: prenda sola, centrada, plana o en maniquí invisible, fondo gris claro uniforme #EDEBE7, misma prenda exacta (color, textura, detalles), sin persona ni sombras duras.']);
+/** Segmenta la prenda principal con el modelo de texto (gratis). Devuelve {box_2d, mask}. */
+export async function segmentGarment(photo) {
+  const r = await ask([
+    await compress(photo, 1024, 0.85),
+    'Da la máscara de segmentación de la prenda o calzado principal de la foto (la más grande; ignora cama, suelo, perchas, personas y fondo). JSON: [{"box_2d":[ymin,xmin,ymax,xmax] normalizado 0-1000,"mask":"PNG data-URL del tamaño de la caja; prenda=255, fondo=0","label":"nombre"}]',
+  ], { json: true, temperature: 0 });
+  const list = Array.isArray(r) ? r : r.items || r.masks || [r];
+  const area = (x) => (x.box_2d[2] - x.box_2d[0]) * (x.box_2d[3] - x.box_2d[1]);
+  const best = list.filter((x) => x?.box_2d && x?.mask).sort((a, b) => area(b) - area(a))[0];
+  if (!best) throw new Error('Gemini no devolvió la silueta de la prenda');
+  return best;
 }

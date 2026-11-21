@@ -3,9 +3,8 @@ import { Plus, Search, Shirt, X, PenLine } from 'lucide-react';
 import { db } from '../lib/db';
 import { CATEGORIES, SUBTYPES, deltaE, colorFamily } from '../lib/fashion';
 import { catOf } from '../lib/engine';
-import { compress, cropBox, extractColors } from '../lib/image';
+import { compress, cropBox, extractColors, applyMask } from '../lib/image';
 import { recognizeGarments, describeFromText } from '../lib/ai';
-import { removeBackgroundLocal } from '../lib/bgremove';
 import { useData, Page, Sheet, Thumb, PhotoPicker, Btn, Empty, itemLabel, useLocal } from '../ui';
 import ItemSheet, { ItemForm } from '../ItemSheet';
 
@@ -37,8 +36,11 @@ function AddFlow({ onDone }) {
         const found = await recognizeGarments(photo);
         if (!found.length) throw new Error('No he detectado prendas en una foto');
         for (const f of found) {
-          const { box_2d: box, ...attrs } = f;
-          out.push({ ...attrs, category: SUBTYPES[attrs.sub].cat, photo: found.length > 1 ? await cropBox(photo, box) : await compress(photo, 700) });
+          const { box_2d: box, mask, ...attrs } = f;
+          const plain = found.length > 1 ? await cropBox(photo, box) : await compress(photo, 700);
+          let cut = null;
+          try { cut = await applyMask(photo, box, mask); } catch { /* sin máscara válida: foto normal */ }
+          out.push({ ...attrs, category: SUBTYPES[attrs.sub].cat, photo: cut || plain, ...(cut ? { originalPhoto: plain } : {}) });
         }
       } catch (e) {
         notify(`${e.message}\nSigo sin IA: colores detectados en el móvil, elige tú el tipo.`, true);
@@ -105,18 +107,6 @@ function AddFlow({ onDone }) {
               </div>
             ))}
           </div>
-          <Btn className="block" disabled={!!progress} onClick={async () => {
-            const next = [...drafts];
-            for (let i = 0; i < next.length; i++) {
-              if (!next[i].photo || next[i].originalPhoto) continue;
-              setProgress(`Quitando fondo ${i + 1} de ${next.length}…`);
-              try {
-                const photo = await removeBackgroundLocal(next[i].photo, (p) => p < 100 && setProgress(`Descargando modelo (solo la primera vez): ${p}%`));
-                next[i] = { ...next[i], photo, originalPhoto: next[i].photo };
-              } catch (e) { notify(e.message, true); }
-            }
-            setDrafts(next); setProgress('');
-          }}>Quitar fondos (en el móvil, gratis)</Btn>
           <Btn className="primary block" onClick={saveAll}>Guardar {drafts.length} en el armario</Btn>
         </>
       )}
