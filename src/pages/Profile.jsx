@@ -4,7 +4,7 @@ import { db, setKV, getKV, exportAll, importAll } from '../lib/db';
 import { SEASONS, BODY_TYPES, STYLES, CATEGORIES, bodyTypeFromMeasures, seasonFromQuiz, colorFamily } from '../lib/fashion';
 import { catOf, hexOf } from '../lib/engine';
 import { analyzeBody } from '../lib/ai';
-import { ask, DEFAULT_MODELS } from '../lib/gemini';
+import { ask, DEFAULT_MODELS, lastModelUsed } from '../lib/gemini';
 import { compress } from '../lib/image';
 import { useData, Page, Btn, PhotoPicker, Swatch, Thumb, itemLabel } from '../ui';
 
@@ -197,7 +197,7 @@ function Settings() {
         <Btn className="primary" busy={busy} onClick={async () => {
           setBusy(true);
           await setKV('apiKey', key); await setKV('modelText', cfg.t); await setKV('modelImage', cfg.i);
-          try { await ask('Responde solo: OK'); notify('Clave guardada y verificada ✓'); } catch (e) { notify(e.message, true); }
+          try { await ask('Responde solo: OK'); notify(`Clave verificada ✓ (modelo: ${lastModelUsed})`); } catch (e) { notify(e.message, true); }
           setBusy(false);
         }}>Guardar y probar</Btn>
       </div>

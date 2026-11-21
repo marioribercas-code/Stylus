@@ -56,7 +56,7 @@ export default function OutfitCard({ res, occasion, onNext, locks, onLock, title
           await save({ tryon: im });
         })}><Wand2 size={16} />Probármelo</Btn>
       </div>
-      {busy === 'try' && <p className="tiny">Generando la simulación… puede tardar 10-30 s.</p>}
+      <p className="tiny">{busy === 'try' ? 'Generando la simulación… puede tardar 10-30 s.' : '«Probármelo» usa el modelo de imagen de Gemini, que normalmente solo funciona con facturación activada.'}</p>
       <Sheet open={!!piece} onClose={() => setPiece(null)}>
         {piece && <ItemSheet item={piece} onClose={() => setPiece(null)} />}
       </Sheet>

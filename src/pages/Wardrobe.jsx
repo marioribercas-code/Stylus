@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Plus, Search, Shirt, X, PenLine } from 'lucide-react';
 import { db } from '../lib/db';
-import { CATEGORIES, SUBTYPES } from '../lib/fashion';
+import { CATEGORIES, SUBTYPES, deltaE, colorFamily } from '../lib/fashion';
 import { catOf } from '../lib/engine';
-import { compress, cropBox } from '../lib/image';
+import { compress, cropBox, extractColors } from '../lib/image';
 import { recognizeGarments, describeFromText } from '../lib/ai';
-import { useData, Page, Sheet, Thumb, PhotoPicker, Btn, Empty, itemLabel } from '../ui';
+import { useData, Page, Sheet, Thumb, PhotoPicker, Btn, Empty, itemLabel, useLocal } from '../ui';
 import ItemSheet, { ItemForm } from '../ItemSheet';
 
 const FILTERS = { all: 'Todo', ...CATEGORIES, laundry: 'A lavar', archived: 'Archivadas' };
@@ -16,12 +16,22 @@ function AddFlow({ onDone }) {
   const [progress, setProgress] = useState('');
   const [open, setOpen] = useState(null);
   const [text, setText] = useState('');
+  const [useAI, setUseAI] = useLocal('useAI', true);
+
+  const manualDraft = async (photo) => {
+    const small = await compress(photo, 700);
+    const cols = [];
+    for (const c of await extractColors(small)) if (!cols.some((x) => deltaE(x.hex, c.hex) < 14)) cols.push(c);
+    return { sub: 'otro', category: 'accessory', name: '', photo: small, colors: (cols.length ? cols : [{ hex: '#808080' }]).slice(0, 3).map((c) => ({ ...c, name: colorFamily(c.hex) })), needsType: true };
+  };
 
   const fromPhotos = async (files) => {
     const out = [];
+    let aiOn = useAI;
     for (let i = 0; i < files.length; i++) {
-      setProgress(`Analizando foto ${i + 1} de ${files.length}…`);
+      setProgress(`${aiOn ? 'Analizando' : 'Procesando'} foto ${i + 1} de ${files.length}…`);
       const photo = await compress(files[i], 1400, 0.88);
+      if (!aiOn) { out.push(await manualDraft(photo)); continue; }
       try {
         const found = await recognizeGarments(photo);
         if (!found.length) throw new Error('No he detectado prendas en una foto');
@@ -30,8 +40,9 @@ function AddFlow({ onDone }) {
           out.push({ ...attrs, category: SUBTYPES[attrs.sub].cat, photo: found.length > 1 ? await cropBox(photo, box) : await compress(photo, 700) });
         }
       } catch (e) {
-        notify(`${e.message}. Etiqueta la prenda a mano.`, true);
-        out.push({ sub: 'otro', category: 'accessory', name: '', photo: await compress(photo, 700), colors: [{ hex: '#808080', name: 'gris' }] });
+        notify(`${e.message}\nSigo sin IA: colores detectados en el móvil, elige tú el tipo.`, true);
+        if (e.status === 429) aiOn = false;
+        out.push(await manualDraft(photo));
       }
     }
     setProgress('');
@@ -51,7 +62,7 @@ function AddFlow({ onDone }) {
 
   const saveAll = async () => {
     const now = Date.now();
-    await db.items.bulkAdd(drafts.map((d, i) => ({ ...d, createdAt: now + i, wears: 0 })));
+    await db.items.bulkAdd(drafts.map(({ needsType: _n, ...d }, i) => ({ ...d, createdAt: now + i, wears: 0 })));
     notify(`${drafts.length} prenda${drafts.length > 1 ? 's' : ''} añadida${drafts.length > 1 ? 's' : ''}`);
     onDone();
   };
@@ -60,7 +71,7 @@ function AddFlow({ onDone }) {
     return (
       <div className="stack">
         <h2>Revisar prenda</h2>
-        <ItemForm value={drafts[open]} onChange={(v) => setDrafts(drafts.map((d, i) => (i === open ? v : d)))} />
+        <ItemForm value={drafts[open]} onChange={(v) => setDrafts(drafts.map((d, i) => (i === open ? { ...v, needsType: v.sub === 'otro' } : d)))} />
         <Btn className="primary" onClick={() => setOpen(null)}>Hecho</Btn>
       </div>
     );
@@ -69,12 +80,18 @@ function AddFlow({ onDone }) {
   return (
     <div className="stack">
       <h2>Añadir prendas</h2>
-      <p className="small muted">Fotografía una prenda o varias a la vez (extendidas en la cama o puestas). La IA las separa y etiqueta: tipo, colores exactos, tejido, formalidad y abrigo. Mejor con luz de día y fondo liso.</p>
+      <div className="seg">
+        <button className={useAI ? 'on' : ''} onClick={() => setUseAI(true)}>Con IA (1 consulta/foto)</button>
+        <button className={!useAI ? 'on' : ''} onClick={() => setUseAI(false)}>Sin IA</button>
+      </div>
+      <p className="small muted">{useAI
+        ? 'Fotografía una prenda o varias a la vez (extendidas en la cama o puestas). La IA las separa y etiqueta: tipo, colores exactos, tejido, formalidad y abrigo. Mejor con luz de día y fondo liso.'
+        : 'Sin gastar IA: los colores se detectan en el móvil y tú eliges el tipo. Una prenda por foto, sobre fondo liso.'}</p>
       <PhotoPicker multiple onPick={fromPhotos} />
-      <div className="row">
+      {useAI && <div className="row">
         <input placeholder="…o descríbela: «chino beige slim de algodón»" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && fromText()} />
         <button className="icon-btn" onClick={fromText}><PenLine size={18} /></button>
-      </div>
+      </div>}
       {progress && <p className="row small gold"><span className="spin" />{progress}</p>}
       {!!drafts.length && (
         <>
@@ -82,7 +99,7 @@ function AddFlow({ onDone }) {
           <div className="grid3">
             {drafts.map((d, i) => (
               <div key={i} style={{ position: 'relative' }}>
-                <Thumb item={d} badge={itemLabel(d)} onClick={() => setOpen(i)} />
+                <Thumb item={d} badge={d.needsType ? '⚠ elige tipo' : itemLabel(d)} onClick={() => setOpen(i)} />
                 <button className="icon-btn" style={{ position: 'absolute', top: 4, right: 4, width: 26, height: 26 }} onClick={() => setDrafts(drafts.filter((_, j) => j !== i))}><X size={14} /></button>
               </div>
             ))}

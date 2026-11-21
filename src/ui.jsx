@@ -22,7 +22,7 @@ export function DataProvider({ children }) {
   const notify = useCallback((msg, bad = false) => {
     setToast({ msg, bad });
     clearTimeout(tRef.current);
-    tRef.current = setTimeout(() => setToast(null), bad ? 4500 : 2500);
+    tRef.current = setTimeout(() => setToast(null), bad ? 8000 : 2500);
   }, []);
 
   const value = useMemo(() => {

@@ -121,7 +121,8 @@ export default function ItemSheet({ item, onClose }) {
         }}><Sparkles size={16} />Mejorar foto</Btn>
         <Btn onClick={() => { update({ archived: !it.archived }); notify(it.archived ? 'Recuperada' : 'Archivada'); onClose?.(); }}><Archive size={16} />{it.archived ? 'Recuperar' : 'Archivar'}</Btn>
       </div>
-      {it.originalPhoto && <button className="tiny" onClick={() => update({ photo: it.originalPhoto, originalPhoto: null })}>Restaurar foto original</button>}
+      <p className="tiny">«Mejorar foto» usa el modelo de imagen de Gemini (normalmente requiere facturación).</p>
+      {it.originalPhoto &&<button className="tiny" onClick={() => update({ photo: it.originalPhoto, originalPhoto: null })}>Restaurar foto original</button>}
       {!!alts.length && (
         <>
           <h3 className="mt">Alternativas en tu armario</h3>
